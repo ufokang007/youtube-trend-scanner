@@ -3,43 +3,62 @@ from googleapiclient.discovery import build
 import pandas as pd
 from collections import Counter
 
-# 프로그램 화면 설정
-st.set_page_config(page_title="유튜브 트렌드 분석기", layout="wide")
-st.title("📊 실시간 유튜브 트렌드 분석기")
+st.set_page_config(page_title="유튜브 트렌드 발견기", layout="wide")
+st.title("🚀 실시간 유튜브 트렌드 발견 & 분석")
 
-# 사이드바에서 비밀번호 형식으로 API 키 입력 받기
 api_key = st.sidebar.text_input("YouTube API Key를 입력하세요", type="password")
 
 if api_key:
     try:
         youtube = build('youtube', 'v3', developerKey=api_key)
-        query = st.text_input("분석하고 싶은 주제를 입력하세요 (예: 상담심리, 중학생 고민)", "상담심리")
         
-        if st.button("트렌드 분석 시작"):
-            # 데이터 수집 (최근 인기 영상 50개)
-            search_response = youtube.search().list(
-                q=query, part='snippet', maxResults=50, order='viewCount', type='video', regionCode='KR'
-            ).execute()
-            
-            titles = [item['snippet']['title'] for item in search_response['items']]
-            
-            # 단어 빈도 분석 (2글자 이상 단어만)
-            words = []
-            for title in titles:
-                words.extend([w for w in title.split() if len(w) > 1])
-            
-            common_words = Counter(words).most_common(15)
-            
-            # 화면 결과 출력
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("🔥 핵심 키워드 순위")
-                st.table(pd.DataFrame(common_words, columns=['키워드', '빈도']))
-            with col2:
-                st.subheader("📺 분석된 인기 영상 목록")
-                for t in titles[:10]:
-                    st.write(f"- {t}")
+        # 선택 모드 추가
+        mode = st.radio("분석 모드를 선택하세요", ["현재 인기 급상승 전체 분석 (발견형)", "특정 주제 집중 분석 (검색형)"])
+        
+        if mode == "현재 인기 급상승 전체 분석 (발견형)":
+            st.info("현재 대한민국에서 가장 핫한 영상 50개를 분석하여 트렌드 키워드를 뽑습니다.")
+            if st.button("전체 트렌드 스캔 시작"):
+                # 검색어 없이 'mostPopular' 차트 데이터 가져오기
+                request = youtube.videos().list(
+                    part='snippet', chart='mostPopular', regionCode='KR', maxResults=50
+                ).execute()
+                titles = [item['snippet']['title'] for item in request['items']]
+                tags = []
+                for item in request['items']:
+                    if 'tags' in item['snippet']:
+                        tags.extend(item['snippet']['tags'])
+                
+                # 시각화 로직
+                display_results(titles, tags)
+
+        else: # 검색형
+            query = st.text_input("분석하고 싶은 주제를 입력하세요", "상담심리")
+            if st.button("주제 분석 시작"):
+                search_response = youtube.search().list(
+                    q=query, part='snippet', maxResults=50, order='viewCount', type='video', regionCode='KR'
+                ).execute()
+                titles = [item['snippet']['title'] for item in search_response['items']]
+                display_results(titles, [])
+                
     except Exception as e:
         st.error(f"에러가 발생했습니다: {e}")
 else:
-    st.info("왼쪽 사이드바에 YouTube API Key를 입력하시면 분석이 시작됩니다.")
+    st.info("왼쪽 사이드바에 API Key를 입력해 주세요.")
+
+def display_results(titles, tags):
+    words = []
+    for title in titles:
+        words.extend([w for w in title.split() if len(w) > 1])
+    
+    # 태그 데이터가 있다면 우선순위 부여
+    all_keywords = words + tags
+    common_words = Counter(all_keywords).most_common(20)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("🔥 지금 이 순간 가장 뜨거운 키워드")
+        st.table(pd.DataFrame(common_words, columns=['키워드', '출현 빈도']))
+    with col2:
+        st.subheader("📺 현재 인기 급상승 Top 10 영상")
+        for i, t in enumerate(titles[:10]):
+            st.write(f"{i+1}. {t}")
